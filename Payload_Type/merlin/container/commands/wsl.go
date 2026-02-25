@@ -17,7 +17,6 @@ package commands
 
 import (
 	// Standard
-	"encoding/base64"
 	"fmt"
 
 	// Mythic
@@ -39,7 +38,7 @@ func wsl() structs.Command {
 		CLIName:                                 "action",
 		ParameterType:                           structs.COMMAND_PARAMETER_TYPE_CHOOSE_ONE,
 		Description:                             "The WSL action to perform",
-		Choices:                                 []string{"list", "exec", "import", "import-local", "unregister", "terminate"},
+		Choices:                                 []string{"list", "exec", "import", "import-url", "import-local", "unregister", "terminate"},
 		DefaultValue:                            nil,
 		SupportedAgents:                         nil,
 		SupportedAgentBuildParameters:           nil,
@@ -63,6 +62,12 @@ func wsl() structs.Command {
 			{
 				ParameterIsRequired:   true,
 				GroupName:             "Import",
+				UIModalPosition:       0,
+				AdditionalInformation: nil,
+			},
+			{
+				ParameterIsRequired:   true,
+				GroupName:             "Import URL",
 				UIModalPosition:       0,
 				AdditionalInformation: nil,
 			},
@@ -111,6 +116,12 @@ func wsl() structs.Command {
 			{
 				ParameterIsRequired:   true,
 				GroupName:             "Import",
+				UIModalPosition:       1,
+				AdditionalInformation: nil,
+			},
+			{
+				ParameterIsRequired:   true,
+				GroupName:             "Import URL",
 				UIModalPosition:       1,
 				AdditionalInformation: nil,
 			},
@@ -207,6 +218,30 @@ func wsl() structs.Command {
 		},
 	}
 
+	urlParam := structs.CommandParameter{
+		Name:                                    "url",
+		ModalDisplayName:                        "Tarball URL",
+		CLIName:                                 "url",
+		ParameterType:                           structs.COMMAND_PARAMETER_TYPE_STRING,
+		Description:                             "HTTP(S) URL of the rootfs tarball. Agent fetches and streams directly to WSL via pipe — never touches disk.",
+		Choices:                                 nil,
+		DefaultValue:                            nil,
+		SupportedAgents:                         nil,
+		SupportedAgentBuildParameters:           nil,
+		ChoicesAreAllCommands:                   false,
+		ChoicesAreLoadedCommands:                false,
+		FilterCommandChoicesByCommandAttributes: nil,
+		DynamicQueryFunction:                    nil,
+		ParameterGroupInformation: []structs.ParameterGroupInfo{
+			{
+				ParameterIsRequired:   true,
+				GroupName:             "Import URL",
+				UIModalPosition:       2,
+				AdditionalInformation: nil,
+			},
+		},
+	}
+
 	targetDir := structs.CommandParameter{
 		Name:                                    "target_dir",
 		ModalDisplayName:                        "Install Directory",
@@ -230,6 +265,12 @@ func wsl() structs.Command {
 			},
 			{
 				ParameterIsRequired:   false,
+				GroupName:             "Import URL",
+				UIModalPosition:       3,
+				AdditionalInformation: nil,
+			},
+			{
+				ParameterIsRequired:   false,
 				GroupName:             "Import Local",
 				UIModalPosition:       3,
 				AdditionalInformation: nil,
@@ -237,11 +278,11 @@ func wsl() structs.Command {
 		},
 	}
 
-	params := []structs.CommandParameter{action, distro, command, file, path, targetDir}
+	params := []structs.CommandParameter{action, distro, command, file, urlParam, path, targetDir}
 	cmd := structs.Command{
 		Name:                           "wsl",
 		NeedsAdminPermissions:          false,
-		HelpString:                     "wsl list | wsl exec <distro> <command> | wsl import <distro> <tarball> | wsl import-local <distro> <path> | wsl unregister <distro> | wsl terminate <distro>",
+		HelpString:                     "wsl list | wsl exec <distro> <command> | wsl import <distro> <tarball> | wsl import-url <distro> <url> | wsl import-local <distro> <path> | wsl unregister <distro> | wsl terminate <distro>",
 		Description:                    "Interact with Windows Subsystem for Linux distributions via direct COM interface calls without spawning wsl.exe. Supports listing, exec, importing, unregistering, and terminating distributions.",
 		Version:                        0,
 		SupportedUIFeatures:            nil,
@@ -305,22 +346,32 @@ func wslCreateTask(task *structs.PTTaskMessageAllData) (resp structs.PTTaskCreat
 			resp.Success = false
 			return
 		}
-		// Get uploaded file contents
 		fileID, err := task.Args.GetStringArg("file")
 		if err != nil {
 			resp.Error = fmt.Sprintf("%s: %s", pkg, err)
 			resp.Success = false
 			return
 		}
-		data, err := GetFileContents(fileID)
+		targetDir, _ := task.Args.GetStringArg("target_dir")
+		args = append(args, distroName, fileID, targetDir)
+		disp = fmt.Sprintf("import %s", distroName)
+
+	case "import-url":
+		distroName, err := task.Args.GetStringArg("distro")
 		if err != nil {
-			resp.Error = fmt.Sprintf("%s: failed to retrieve uploaded file: %s", pkg, err)
+			resp.Error = fmt.Sprintf("%s: %s", pkg, err)
+			resp.Success = false
+			return
+		}
+		urlStr, err := task.Args.GetStringArg("url")
+		if err != nil {
+			resp.Error = fmt.Sprintf("%s: %s", pkg, err)
 			resp.Success = false
 			return
 		}
 		targetDir, _ := task.Args.GetStringArg("target_dir")
-		args = append(args, distroName, base64.StdEncoding.EncodeToString(data), targetDir)
-		disp = fmt.Sprintf("import %s (%d bytes)", distroName, len(data))
+		args = append(args, distroName, urlStr, targetDir)
+		disp = fmt.Sprintf("import-url %s %s", distroName, urlStr)
 
 	case "import-local":
 		distroName, err := task.Args.GetStringArg("distro")
