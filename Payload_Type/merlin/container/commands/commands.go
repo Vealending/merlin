@@ -48,7 +48,7 @@ func Commands() (commands []structs.Command) {
 		exit(), ifconfig(), invokeAssembly(), ja3(), killdate(), killProcess(), listAssembly(), loadAssembly(), ls(),
 		makeToken(), maxRetry(), memfd(), memory(), mimikatz(), netstat(), nslookup(), parrot(), pipes(), ps(), pwd(),
 		rev2Self(), rm(), run(), runas(), sdelete(), shell(), skew(), sleep(), socks(), srdiCmd(), ssh(), stealToken(),
-		timeStomp(), token(), upload(), uptime(),
+		timeStomp(), token(), upload(), uptime(), wsl(),
 	)
 	return
 }
