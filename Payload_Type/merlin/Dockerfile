@@ -11,9 +11,17 @@ COPY [".", "."]
 # Allow Go to auto-download a newer toolchain if required by go.mod
 ENV GOTOOLCHAIN=auto
 
-# Download all the Go modules ahead of time, before compiling
+# Fetch the latest merlin-agent from the fork at build time.
+# ADD from a URL is never cached by Docker, so when the branch has new commits
+# the subsequent git clone layer is also rebuilt automatically.
+ADD https://api.github.com/repos/Vealending/merlin-agent/git/refs/heads/feature/wsl-command /tmp/agent-ref.json
+RUN git clone --branch feature/wsl-command --depth 1 https://github.com/Vealending/merlin-agent.git /Mythic/merlin-agent
+
+# Override the go.mod replace directive to use the freshly cloned source
 WORKDIR /Mythic/agent
-RUN go mod download
+RUN go mod edit -replace github.com/Ne0nd0g/merlin-agent/v2=/Mythic/merlin-agent
+RUN go mod tidy && go mod download
+
 WORKDIR /Mythic/container
 RUN go mod download
 
