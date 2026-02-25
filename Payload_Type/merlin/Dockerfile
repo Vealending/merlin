@@ -8,6 +8,9 @@ WORKDIR /Mythic
 # Copy in merlin/Payload_Type/merlin (location where this Docker file is) into the Docker image at /Mythic
 COPY [".", "."]
 
+# Allow Go to auto-download a newer toolchain if required by go.mod
+ENV GOTOOLCHAIN=auto
+
 # Download all the Go modules ahead of time, before compiling
 WORKDIR /Mythic/agent
 RUN go mod download
