@@ -44,4 +44,4 @@ require (
 	golang.org/x/tools v0.32.0 // indirect
 )
 
-replace github.com/Ne0nd0g/merlin-agent/v2 => github.com/Vealending/merlin-agent/v2 v2.4.3-0.20260302134323-961857c55de5
+replace github.com/Ne0nd0g/merlin-agent/v2 => github.com/Vealending/merlin-agent/v2 v2.4.4-0.20260302223252-1b9b4144f675
