@@ -24,6 +24,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -43,4 +44,4 @@ require (
 	golang.org/x/tools v0.32.0 // indirect
 )
 
-replace github.com/Ne0nd0g/merlin-agent/v2 => github.com/Vealending/merlin-agent/v2 v2.4.3-0.20260225132637-348a6374c86d
+replace github.com/Ne0nd0g/merlin-agent/v2 => github.com/Vealending/merlin-agent/v2 v2.4.3-0.20260302134323-961857c55de5
