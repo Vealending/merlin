@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -90,18 +91,26 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		}
 	}
 
-	// The 'headers' key provides a value of map[string]interface{}
-	// The key is the name of the header (e.g., Host, User-Agent)
+	// Headers: HTTP profile uses a map, websocket uses USER_AGENT/domain_front strings
+	var headers map[string]interface{}
 	v, ok := msg.C2Profiles[0].Parameters["headers"]
-	if !ok {
-		err := fmt.Errorf("%s: the 'headers' key was not found in the C2Profiles' parameters map", pkg)
-		response.BuildStdErr = err.Error()
-		logging.LogError(err, "returning with error")
-		return
+	if ok {
+		headers = v.(map[string]interface{})
+	} else {
+		// Build a headers map from individual params (websocket profile)
+		headers = make(map[string]interface{})
+		if ua, uaOk := msg.C2Profiles[0].Parameters["USER_AGENT"]; uaOk && fmt.Sprintf("%v", ua) != "" {
+			headers["User-Agent"] = ua
+		}
+		if df, dfOk := msg.C2Profiles[0].Parameters["domain_front"]; dfOk && fmt.Sprintf("%v", df) != "" {
+			headers["Host"] = df
+		}
 	}
-	headers := v.(map[string]interface{})
 
-	// Port
+	// Declare err for use in subsequent error paths
+	var err error
+
+	// Port — HTTP profile sends float64, websocket profile sends string
 	v, ok = msg.C2Profiles[0].Parameters["callback_port"]
 	if !ok {
 		err := fmt.Errorf("%s: the 'callback_port' key was not found in the C2Profiles' parameters map", pkg)
@@ -109,17 +118,36 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		logging.LogError(err, "returning with error")
 		return
 	}
-	port := v.(float64)
+	var port float64
+	switch pv := v.(type) {
+	case float64:
+		port = pv
+	case string:
+		p, pErr := strconv.ParseFloat(pv, 64)
+		if pErr != nil {
+			err = fmt.Errorf("%s: could not parse callback_port %q: %s", pkg, pv, pErr)
+			response.BuildStdErr = err.Error()
+			logging.LogError(err, "returning with error")
+			return
+		}
+		port = p
+	default:
+		err = fmt.Errorf("%s: unexpected type for callback_port: %T", pkg, v)
+		response.BuildStdErr = err.Error()
+		logging.LogError(err, "returning with error")
+		return
+	}
 
 	v, ok = msg.C2Profiles[0].Parameters["killdate"]
 	if !ok {
-		err := fmt.Errorf("%s: the 'killdate' key was not found in the C2Profiles' parameters map", pkg)
+		err = fmt.Errorf("%s: the 'killdate' key was not found in the C2Profiles' parameters map", pkg)
 		response.BuildStdErr = err.Error()
 		logging.LogError(err, "returning with error")
 		return
 	}
 	// 2024-03-14 <- What Mythic provides
-	kill, err := time.Parse(time.RFC3339, fmt.Sprintf("%sT00:00:00.000Z", v.(string)))
+	var kill time.Time
+	kill, err = time.Parse(time.RFC3339, fmt.Sprintf("%sT00:00:00.000Z", v.(string)))
 	if err != nil {
 		err = fmt.Errorf("%s: there was an error parsing the killdate '%s': %s", pkg, v, err)
 		response.BuildStdErr = fmt.Sprintf("Build: there was an error parsing the killdate \"%s\": %s", v, err)
@@ -127,6 +155,7 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		return
 	}
 
+	// callback_interval — HTTP sends float64, websocket sends string
 	v, ok = msg.C2Profiles[0].Parameters["callback_interval"]
 	if !ok {
 		err = fmt.Errorf("%s: the 'callback_interval' key was not found in the C2Profiles' parameters map", pkg)
@@ -134,7 +163,19 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		logging.LogError(err, "returning with error")
 		return
 	}
-	sleep := v.(float64)
+	var sleep float64
+	switch sv := v.(type) {
+	case float64:
+		sleep = sv
+	case string:
+		sleep, err = strconv.ParseFloat(sv, 64)
+		if err != nil {
+			err = fmt.Errorf("%s: could not parse callback_interval %q: %s", pkg, sv, err)
+			response.BuildStdErr = err.Error()
+			logging.LogError(err, "returning with error")
+			return
+		}
+	}
 
 	v, ok = msg.C2Profiles[0].Parameters["callback_jitter"]
 	if !ok {
@@ -143,7 +184,19 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		logging.LogError(err, "returning with error")
 		return
 	}
-	jitter := v.(float64)
+	var jitter float64
+	switch jv := v.(type) {
+	case float64:
+		jitter = jv
+	case string:
+		jitter, err = strconv.ParseFloat(jv, 64)
+		if err != nil {
+			err = fmt.Errorf("%s: could not parse callback_jitter %q: %s", pkg, jv, err)
+			response.BuildStdErr = err.Error()
+			logging.LogError(err, "returning with error")
+			return
+		}
+	}
 
 	skew := (jitter / 100) * (sleep * 1000)
 
