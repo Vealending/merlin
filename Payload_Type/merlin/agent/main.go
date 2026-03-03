@@ -35,6 +35,7 @@ import (
 	"github.com/Ne0nd0g/merlin-agent/v2/clients"
 	"github.com/Ne0nd0g/merlin-agent/v2/clients/mythic"
 	"github.com/Ne0nd0g/merlin-agent/v2/core"
+	"github.com/Ne0nd0g/merlin-agent/v2/profiling"
 	"github.com/Ne0nd0g/merlin-agent/v2/run"
 )
 
@@ -114,6 +115,7 @@ var pushMode = "false"
 var wsEndpoint = "socket"
 
 func main() {
+	profiling.Start()
 	core.Verbose, _ = strconv.ParseBool(verbose)
 	core.Debug, _ = strconv.ParseBool(debug)
 

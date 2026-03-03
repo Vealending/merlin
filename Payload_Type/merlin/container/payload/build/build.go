@@ -336,6 +336,14 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 		return
 	}
 
+	pprofEnabled, err := msg.BuildParameters.GetBooleanArg("pprof")
+	if err != nil {
+		err = fmt.Errorf("%s: there was an error getting the 'pprof' key from the BuildParameter's map: %s", pkg, err)
+		response.BuildStdErr = err.Error()
+		logging.LogError(err, "returning with error")
+		return
+	}
+
 	switch msg.SelectedOS {
 	case structs.SUPPORTED_OS_MACOS:
 		msg.SelectedOS = "darwin"
@@ -427,6 +435,9 @@ func Build(msg structs.PayloadBuildMessage) (response structs.PayloadBuildRespon
 	// The "go" HTTP client is always included, so there is no tag to add for it
 	if strings.ToLower(httpClient) == "winhttp" {
 		tags += ",winhttp"
+	}
+	if pprofEnabled {
+		tags += ",pprof"
 	}
 
 	// Setup Go command
@@ -710,6 +721,13 @@ func NewPayload() (structs.PayloadType, error) {
 		return structs.PayloadType{}, fmt.Errorf("NewPayload(): %s", err)
 	}
 	payload.BuildParameters = append(payload.BuildParameters, garble)
+
+	// PPROF
+	pprof, err := newBuildParameterBoolQuick("pprof", "Enable pprof profiling server on 127.0.0.1:6060 (debug builds only)", false, false)
+	if err != nil {
+		return structs.PayloadType{}, fmt.Errorf("NewPayload(): %s", err)
+	}
+	payload.BuildParameters = append(payload.BuildParameters, pprof)
 
 	// BUILD MODE
 	description := "Payload build mode and output format. \nDEFAULT: exe, bin, etc., \nSHARED: dll, so., \nRAW: shellcode (windows)"
